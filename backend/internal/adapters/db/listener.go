@@ -12,8 +12,10 @@ import (
 )
 
 // ListenJobStatus mantiene una conexión dedicada escuchando el canal
-// "job_status" (ver migración 0002_job_status_notify.sql) y publica cada
-// notificación en el hub para que los handlers SSE la reciban.
+// "job_status" (ver ../migrations/0002_job_status_notify.sql, el trigger que
+// dispara el worker al escribir el estado) y publica cada notificación en el
+// hub para que los handlers SSE la reciban. El status que llega es el del
+// worker; la traducción al vocabulario del frontend la hace el handler SSE.
 //
 // LISTEN/NOTIFY necesita sostener una conexión propia: no se puede hacer
 // sobre pgxpool, que reutiliza y libera conexiones por consulta. Si la

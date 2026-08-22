@@ -19,7 +19,6 @@ type Dependencies struct {
 	Tokens         ports.TokenIssuer
 	Users          ports.UserRepository
 	Hub            *events.Hub
-	WebhookSecret  string
 	FrontendOrigin string
 }
 
@@ -50,13 +49,10 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		protected.GET("/bundles/:id/download", bundles.Download)
 	}
 
-	// El Worker no tiene JWT de usuario: se autentica con un secreto
-	// compartido (ver middleware.RequireWebhookSecret) en vez de vivir
-	// dentro del grupo "protected".
-	webhooks := r.Group("/webhooks", middleware.RequireWebhookSecret(deps.WebhookSecret))
-	{
-		webhooks.POST("/jobs/:id/status", jobs.Webhook)
-	}
+	// Nota: NO hay endpoint de webhook para el worker. El worker (../worker) es
+	// la fuente de verdad y escribe el estado directo en Postgres; el frontend
+	// se entera por el camino trigger pg_notify -> LISTEN -> SSE
+	// (ver db.ListenJobStatus y jobs.Stream), sin que el worker llame a la API.
 
 	return r
 }

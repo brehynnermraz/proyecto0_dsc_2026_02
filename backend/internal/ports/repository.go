@@ -17,30 +17,20 @@ type DocumentRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// JobRepository es SOLO de lectura y alta desde la API. Reclamar el trabajo,
+// renovar el lease, marcar succeeded/failed/dead: todo eso lo hace el worker
+// (../worker) directamente sobre Postgres, que es la fuente de verdad. La API
+// crea el job al subir el documento y lo consulta para el estado y la
+// autorización; el borrado lo hace por cascada al borrar el documento.
 type JobRepository interface {
 	Create(ctx context.Context, j *domain.Job) error
+
+	// FindByID trae el job y, si ya produjo un bundle, su id (resuelto por
+	// bundles.job_id, porque el esquema del worker no guarda jobs.bundle_id).
 	FindByID(ctx context.Context, id string) (*domain.Job, error)
-
-	// ClaimForProcessing transiciona atómicamente un job de "pending" o
-	// "failed" a "processing" — "failed" se incluye para que un reintento
-	// tras un fallo transitorio pueda reprocesar el job. Devuelve ok=false
-	// si el job ya está "processing" o "done" por otra entrega — así una
-	// entrega duplicada de la cola (sección 6: "ausencia de duplicados") no
-	// vuelve a procesar nada mientras la original está en curso o ya
-	// terminó con éxito.
-	ClaimForProcessing(ctx context.Context, id string) (ok bool, err error)
-
-	MarkDone(ctx context.Context, id string, bundleID string) error
-	MarkFailed(ctx context.Context, id string, attempt int, errMsg string) error
-
-	// ClearBundle rompe la referencia jobs.bundle_id -> bundles.id, paso
-	// obligatorio antes de borrar un bundle (ver DeleteJobService).
-	ClearBundle(ctx context.Context, id string) error
-	Delete(ctx context.Context, id string) error
 }
 
 type BundleRepository interface {
-	Create(ctx context.Context, b *domain.Bundle) error
 	FindByID(ctx context.Context, id string) (*domain.Bundle, error)
-	Delete(ctx context.Context, id string) error
+	FindByJob(ctx context.Context, jobID string) (*domain.Bundle, error)
 }

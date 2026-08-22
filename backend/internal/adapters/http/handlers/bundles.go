@@ -28,7 +28,7 @@ func (h *BundlesHandler) Download(c *gin.Context) {
 		return
 	}
 
-	stream, err := h.Storage.GetBundleStream(c.Request.Context(), bundle.StorageKey)
+	stream, err := h.Storage.GetBundleStream(c.Request.Context(), bundle.StoragePrefix)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudo leer el bundle"})
 		return

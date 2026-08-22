@@ -29,10 +29,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	objectStore, err := storage.NewMinioStore(cfg.MinioEndpoint, cfg.MinioAccessKey, cfg.MinioSecretKey, cfg.MinioBucket, cfg.MinioUseSSL)
-	if err != nil {
-		log.Fatalf("minio: %v", err)
-	}
+	// Object store: el servicio object-storage por HTTP, el mismo almacén que
+	// el worker. No hay conexión que abrir aquí; los errores salen en el primer
+	// PUT/GET.
+	objectStore := storage.NewObjectStore(cfg.StorageBaseURL, cfg.StorageToken)
 
 	conn, err := queue.DialWithRetry(cfg.RabbitMQURL, 10, 2*time.Second)
 	if err != nil {
@@ -83,7 +83,6 @@ func main() {
 		Tokens:         tokens,
 		Users:          users,
 		Hub:            hub,
-		WebhookSecret:  cfg.WebhookSecret,
 		FrontendOrigin: cfg.FrontendOrigin,
 	})
 

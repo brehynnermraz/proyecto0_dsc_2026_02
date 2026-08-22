@@ -36,9 +36,14 @@ func (h *DocumentsHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	format := c.PostForm("format") // "markdown" | "html" | "text"
+	format := c.PostForm("format") // "html" | "epub" (lo que soporta el worker)
+	mime, ok := app.MIMEForFormat(format)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "formato no soportado (usa html o epub)"})
+		return
+	}
 
-	jobID, err := h.Submit.Submit(c.Request.Context(), ownerID, header.Filename, format, header.Size, header.Header.Get("Content-Type"), file)
+	jobID, err := h.Submit.Submit(c.Request.Context(), ownerID, header.Filename, mime, header.Size, file)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudo encolar el trabajo"})
 		return

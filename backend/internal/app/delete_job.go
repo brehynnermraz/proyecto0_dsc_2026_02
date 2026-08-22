@@ -9,10 +9,15 @@ import (
 )
 
 // DeleteJobService borra un job junto con todo lo que le pertenece: el
-// documento original y, si existe, el bundle generado — sus filas en la
-// base de datos y sus objetos en el almacenamiento. La autorización (que el
-// job pertenezca a quien pide borrarlo) es responsabilidad del handler
-// HTTP, igual que en el resto de operaciones sobre jobs.
+// documento original y, si existe, el bundle generado — sus filas y sus objetos
+// en el object store. La autorización (que el job sea de quien lo borra) es
+// del handler HTTP.
+//
+// En el esquema del worker no hay FK circular jobs<->bundles: es
+// jobs.document_id -> documents y bundles.job_id -> jobs, ambas ON DELETE
+// CASCADE. Por eso basta borrar el documento y la base arrastra el job y el
+// bundle; aquí lo único que hay que hacer a mano es limpiar los objetos del
+// store ANTES, porque el object store no participa del CASCADE.
 type DeleteJobService struct {
 	Jobs      ports.JobRepository
 	Documents ports.DocumentRepository
@@ -21,32 +26,19 @@ type DeleteJobService struct {
 }
 
 func (s *DeleteJobService) Delete(ctx context.Context, job *domain.Job) error {
-	if job.BundleID != nil {
-		if bundle, err := s.Bundles.FindByID(ctx, *job.BundleID); err == nil {
-			_ = s.Storage.DeleteBundle(ctx, bundle.StorageKey)
-		}
-
-		// Ver JobRepository.ClearBundle: la FK circular entre jobs y bundles
-		// obliga a romper la referencia antes de poder borrar el bundle.
-		if err := s.Jobs.ClearBundle(ctx, job.ID); err != nil {
-			return fmt.Errorf("clear bundle ref: %w", err)
-		}
-		if err := s.Bundles.Delete(ctx, *job.BundleID); err != nil {
-			return fmt.Errorf("delete bundle: %w", err)
-		}
+	// 1. Objetos del bundle (si el worker ya publicó uno).
+	if bundle, err := s.Bundles.FindByJob(ctx, job.ID); err == nil {
+		_ = s.Storage.DeleteBundle(ctx, bundle.StoragePrefix)
 	}
 
-	if err := s.Jobs.Delete(ctx, job.ID); err != nil {
-		return fmt.Errorf("delete job: %w", err)
+	// 2. Objeto original.
+	if doc, err := s.Documents.FindByID(ctx, job.DocumentID); err == nil {
+		_ = s.Storage.DeleteOriginal(ctx, doc.StorageKey)
 	}
 
-	doc, err := s.Documents.FindByID(ctx, job.DocumentID)
-	if err != nil {
-		// El job ya se borró; que falte el documento (por ejemplo, un
-		// borrado anterior a medias) no debe impedir considerar la
-		// operación exitosa.
-		return nil
+	// 3. Filas: borrar el documento arrastra job y bundle por CASCADE.
+	if err := s.Documents.Delete(ctx, job.DocumentID); err != nil {
+		return fmt.Errorf("delete document: %w", err)
 	}
-	_ = s.Storage.DeleteOriginal(ctx, doc.StorageKey)
-	return s.Documents.Delete(ctx, doc.ID)
+	return nil
 }

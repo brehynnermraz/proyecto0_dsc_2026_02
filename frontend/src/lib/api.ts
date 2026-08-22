@@ -39,7 +39,9 @@ export async function login(email: string, password: string): Promise<{ token: s
   return res.json();
 }
 
-export type DocumentFormat = "markdown" | "html" | "text";
+// Solo los formatos que el worker (../worker) soporta hoy: HTML y EPUB.
+// Markdown/texto/docx/pdf están pendientes allá, así que no se ofrecen.
+export type DocumentFormat = "html" | "epub";
 
 export class UploadAbortedError extends Error {}
 
@@ -91,8 +93,10 @@ export function uploadDocument(
 
 export type JobStatus = "pending" | "processing" | "done" | "failed";
 
-// Los campos coinciden con domain.Job en el backend (sin json tags, así que
-// Go serializa los nombres de campo tal cual, capitalizados).
+// Los campos coinciden con lo que emite domain.Job.MarshalJSON en el backend.
+// Status ya viene traducido al vocabulario del frontend (el backend mapea el
+// enum del worker queued/succeeded/... a pending/done/...). BundleID llega
+// cuando el worker ya publicó el bundle (habilita la descarga).
 export interface Job {
   ID: string;
   DocumentID: string;
@@ -102,7 +106,6 @@ export interface Job {
   Error: string;
   BundleID: string | null;
   CreatedAt: string;
-  UpdatedAt: string;
 }
 
 export async function getJob(token: string, jobId: string): Promise<Job> {
