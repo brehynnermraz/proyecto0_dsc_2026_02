@@ -1,3 +1,8 @@
+# Los secretos (STORAGE_TOKEN, JWT_SECRET) traen un valor por defecto
+# ("cambia-esto") para que `docker compose up` funcione SIN crear un .env: es un
+# proyecto de aprendizaje local. Para algo real, sobreescríbelos con un .env en
+# esta carpeta (Compose lo lee solo) o exportándolos en el shell:
+#   STORAGE_TOKEN=xxxx JWT_SECRET=yyyy docker compose up
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +14,10 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      # Publicado en 5433 para no chocar con un Postgres nativo en 5432. Solo
+      # afecta el acceso DESDE el host (psql -p 5433); dentro de la red de
+      # Compose los servicios siguen hablando por "postgres:5432".
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-okf}"]
       interval: 5s
@@ -22,8 +30,10 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      # 5673 (AMQP) y 15673 (UI) para no chocar con un RabbitMQ nativo en
+      # 5672/15672. Dentro de Compose los servicios usan "rabbitmq:5672".
+      - "5673:5672"
+      - "15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
@@ -37,7 +47,7 @@ services:
     build:
       context: ./object-storage
     environment:
-      STORAGE_TOKEN: ${STORAGE_TOKEN:?definilo en .env, ver .env.example}
+      STORAGE_TOKEN: ${STORAGE_TOKEN:-cambia-esto}
     volumes:
       - objectdata:/data/objects
     ports:
@@ -57,8 +67,8 @@ services:
       POSTGRES_DSN: postgres://${POSTGRES_USER:-okf}:${POSTGRES_PASSWORD:-okf}@postgres:5432/${POSTGRES_DB:-okf}?sslmode=disable
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
       STORAGE_BASE_URL: http://object-storage:9000
-      STORAGE_TOKEN: ${STORAGE_TOKEN:?definilo en .env, ver .env.example}
-      JWT_SECRET: ${JWT_SECRET:?definilo en .env, ver .env.example}
+      STORAGE_TOKEN: ${STORAGE_TOKEN:-cambia-esto}
+      JWT_SECRET: ${JWT_SECRET:-cambia-esto}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     ports:
       - "8080:8080"
@@ -81,7 +91,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-okf}:${POSTGRES_PASSWORD:-okf}@postgres:5432/${POSTGRES_DB:-okf}?sslmode=disable
       STORAGE_BACKEND: http
       STORAGE_BASE_URL: http://object-storage:9000
-      STORAGE_TOKEN: ${STORAGE_TOKEN:?definilo en .env, ver .env.example}
+      STORAGE_TOKEN: ${STORAGE_TOKEN:-cambia-esto}
       LOG_FORMAT: json
     depends_on:
       postgres:
