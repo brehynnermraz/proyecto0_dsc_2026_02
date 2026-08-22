@@ -3,16 +3,16 @@ package config
 import "os"
 
 type Config struct {
-	Port           string
-	PostgresDSN    string
-	RabbitMQURL    string
-	MinioEndpoint  string
-	MinioAccessKey string
-	MinioSecretKey string
-	MinioBucket    string
-	MinioUseSSL    bool
+	Port        string
+	PostgresDSN string
+	RabbitMQURL string
+
+	// Object store: el servicio object-storage (../object-storage), el MISMO
+	// almacén que usa el worker. Sustituye a MinIO.
+	StorageBaseURL string // p. ej. http://localhost:9000
+	StorageToken   string // STORAGE_TOKEN compartido con el servicio y el worker
+
 	JWTSecret      string
-	WebhookSecret  string
 	FrontendOrigin string
 }
 
@@ -21,13 +21,9 @@ func Load() Config {
 		Port:           env("PORT", "8080"),
 		PostgresDSN:    env("POSTGRES_DSN", "postgres://okf:okf@postgres:5432/okf?sslmode=disable"),
 		RabbitMQURL:    env("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/"),
-		MinioEndpoint:  env("MINIO_ENDPOINT", "minio:9000"),
-		MinioAccessKey: env("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey: env("MINIO_SECRET_KEY", "minioadmin"),
-		MinioBucket:    env("MINIO_BUCKET", "okf"),
-		MinioUseSSL:    env("MINIO_USE_SSL", "false") == "true",
+		StorageBaseURL: env("STORAGE_BASE_URL", "http://object-storage:9000"),
+		StorageToken:   env("STORAGE_TOKEN", ""),
 		JWTSecret:      env("JWT_SECRET", ""),
-		WebhookSecret:  env("WORKER_WEBHOOK_SECRET", ""),
 		FrontendOrigin: env("FRONTEND_ORIGIN", "http://localhost:3000"),
 	}
 }

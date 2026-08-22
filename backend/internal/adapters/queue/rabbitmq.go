@@ -12,54 +12,78 @@ import (
 	"okfbundler/internal/ports"
 )
 
+// Nombres y argumentos de la topología. DEBEN COINCIDIR EXACTAMENTE con los del
+// worker (worker/internal/adapter/amqp/topology.go): declarar una cola o un
+// exchange que ya existe con argumentos DISTINTOS hace fallar el canal
+// ("inequivalent args"). La API y el worker declaran la misma topología, cada
+// uno al arrancar, y como es idempotente no importa cuál lo haga primero.
+//
+// La API solo publica en okf.jobs con la routing key "convert"; el resto de la
+// mecánica (reintentos vía jobs.retry, muerte en jobs.dead) es cosa del worker.
 const (
-	mainQueue  = "jobs"
-	retryQueue = "jobs.retry"
-	deadQueue  = "jobs.dead"
-	exchange   = "jobs.direct"
-	retryTTL   = 30 * time.Second // backoff antes de reintentar
+	exchangeJobs = "okf.jobs"     // trabajo nuevo
+	exchangeDLX  = "okf.jobs.dlx" // dead-letter: espera y muerte
+
+	queueConvert = "jobs.convert" // cola de trabajo (la consume el worker)
+	queueRetry   = "jobs.retry"   // sala de espera: sin consumidores, con TTL
+	queueDead    = "jobs.dead"    // terminal: inspección manual
+
+	keyConvert = "convert"
+	keyRetry   = "retry"
+	keyDead    = "dead"
+
+	// Deben igualar los valores por defecto del worker (config.Config):
+	// AMQP_DELIVERY_LIMIT=20, AMQP_RETRY_TTL=30s.
+	deliveryLimit = int32(20)
+	retryTTL      = 30 * time.Second
 )
 
-// Topology declara las tres colas del diagrama de arquitectura:
+// Topology declara exchanges, colas y bindings tal como los espera el worker.
+// Es idempotente. El backoff sale gratis: un Nack(requeue=false) en
+// jobs.convert manda el mensaje al DLX con la key "retry"; jobs.retry no tiene
+// consumidores y al expirar su TTL el broker lo devuelve solo a jobs.convert.
 //
-//	jobs        -> cola principal, consumida por los workers
-//	jobs.retry  -> cola de espera con TTL; al expirar, el mensaje vuelve a jobs
-//	jobs.dead   -> destino final tras superar max_attempts (ver adapters/worker)
-//
-// Tanto la API (para publicar) como el worker (para consumir) llaman a esta
-// función al arrancar, así que la topología queda declarada sin importar
-// cuál de los dos procesos arranca primero.
+//	jobs.convert ──Nack──▶ okf.jobs.dlx ──"retry"──▶ jobs.retry
+//	     ▲                                              │ TTL 30 s
+//	     └───────────── okf.jobs ──"convert"────────────┘
 func Topology(ch *amqp.Channel) error {
-	if err := ch.ExchangeDeclare(exchange, "direct", true, false, false, false, nil); err != nil {
-		return fmt.Errorf("declare exchange: %w", err)
+	for _, ex := range []string{exchangeJobs, exchangeDLX} {
+		if err := ch.ExchangeDeclare(ex, "direct", true, false, false, false, nil); err != nil {
+			return fmt.Errorf("declare exchange %s: %w", ex, err)
+		}
 	}
 
-	if _, err := ch.QueueDeclare(mainQueue, true, false, false, false, amqp.Table{
-		"x-dead-letter-exchange":    exchange,
-		"x-dead-letter-routing-key": retryQueue,
+	// Cola de trabajo. Quorum + x-delivery-limit exactamente como el worker.
+	if _, err := ch.QueueDeclare(queueConvert, true, false, false, false, amqp.Table{
+		"x-queue-type":              "quorum",
+		"x-dead-letter-exchange":    exchangeDLX,
+		"x-dead-letter-routing-key": keyRetry,
+		"x-delivery-limit":          deliveryLimit,
 	}); err != nil {
-		return fmt.Errorf("declare %s: %w", mainQueue, err)
+		return fmt.Errorf("declare %s: %w", queueConvert, err)
 	}
-	if err := ch.QueueBind(mainQueue, mainQueue, exchange, false, nil); err != nil {
-		return fmt.Errorf("bind %s: %w", mainQueue, err)
+	if err := ch.QueueBind(queueConvert, keyConvert, exchangeJobs, false, nil); err != nil {
+		return fmt.Errorf("bind %s: %w", queueConvert, err)
 	}
 
-	if _, err := ch.QueueDeclare(retryQueue, true, false, false, false, amqp.Table{
+	// Sala de espera: el TTL es el reloj del backoff.
+	if _, err := ch.QueueDeclare(queueRetry, true, false, false, false, amqp.Table{
 		"x-message-ttl":             int32(retryTTL.Milliseconds()),
-		"x-dead-letter-exchange":    exchange,
-		"x-dead-letter-routing-key": mainQueue,
+		"x-dead-letter-exchange":    exchangeJobs,
+		"x-dead-letter-routing-key": keyConvert,
 	}); err != nil {
-		return fmt.Errorf("declare %s: %w", retryQueue, err)
+		return fmt.Errorf("declare %s: %w", queueRetry, err)
 	}
-	if err := ch.QueueBind(retryQueue, retryQueue, exchange, false, nil); err != nil {
-		return fmt.Errorf("bind %s: %w", retryQueue, err)
+	if err := ch.QueueBind(queueRetry, keyRetry, exchangeDLX, false, nil); err != nil {
+		return fmt.Errorf("bind %s: %w", queueRetry, err)
 	}
 
-	if _, err := ch.QueueDeclare(deadQueue, true, false, false, false, nil); err != nil {
-		return fmt.Errorf("declare %s: %w", deadQueue, err)
+	// Terminal.
+	if _, err := ch.QueueDeclare(queueDead, true, false, false, false, nil); err != nil {
+		return fmt.Errorf("declare %s: %w", queueDead, err)
 	}
-	if err := ch.QueueBind(deadQueue, deadQueue, exchange, false, nil); err != nil {
-		return fmt.Errorf("bind %s: %w", deadQueue, err)
+	if err := ch.QueueBind(queueDead, keyDead, exchangeDLX, false, nil); err != nil {
+		return fmt.Errorf("bind %s: %w", queueDead, err)
 	}
 
 	return nil
@@ -68,7 +92,7 @@ func Topology(ch *amqp.Channel) error {
 // DialWithRetry conecta a RabbitMQ reintentando con backoff fijo. Existe
 // porque un healthcheck de "el broker responde" (rabbitmq-diagnostics ping)
 // puede pasar un instante antes de que el listener AMQP acepte conexiones:
-// sin esto, api y worker pueden arrancar justo en esa ventana y morir con
+// sin esto, la API puede arrancar justo en esa ventana y morir con
 // "connection refused" aunque Docker Compose ya marcó rabbitmq como healthy.
 func DialWithRetry(url string, attempts int, delay time.Duration) (*amqp.Connection, error) {
 	var lastErr error
@@ -94,27 +118,17 @@ func NewPublisher(ch *amqp.Channel) *Publisher {
 
 var _ ports.JobQueue = (*Publisher)(nil)
 
+// Publish encola el trabajo para el worker. Fija MessageId = job_id porque el
+// worker lo prefiere sobre el cuerpo (es también la clave de deduplicación del
+// broker y lo que se ve en la UI de gestión), y publica en okf.jobs con la key
+// "convert", que es donde el worker tiene atada su cola jobs.convert.
 func (p *Publisher) Publish(ctx context.Context, msg ports.QueueMessage) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
-	return p.ch.PublishWithContext(ctx, exchange, mainQueue, false, false, amqp.Publishing{
-		ContentType:  "application/json",
-		DeliveryMode: amqp.Persistent,
-		Body:         body,
-	})
-}
-
-// RouteToDead se usa cuando un job supera max_attempts: en vez de dejar que
-// el TTL de jobs.retry lo reintente indefinidamente, se publica directo a
-// jobs.dead para inspección manual.
-func RouteToDead(ctx context.Context, ch *amqp.Channel, msg ports.QueueMessage) error {
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return ch.PublishWithContext(ctx, exchange, deadQueue, false, false, amqp.Publishing{
+	return p.ch.PublishWithContext(ctx, exchangeJobs, keyConvert, false, false, amqp.Publishing{
+		MessageId:    msg.JobID,
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Body:         body,

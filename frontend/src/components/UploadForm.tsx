@@ -7,9 +7,8 @@ import { formatBytes } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
 
 const FORMATS: { value: DocumentFormat; label: string; extensions: string }[] = [
-  { value: "markdown", label: "Markdown", extensions: ".md,.markdown" },
   { value: "html", label: "HTML", extensions: ".html,.htm" },
-  { value: "text", label: "texto", extensions: ".txt" },
+  { value: "epub", label: "EPUB", extensions: ".epub" },
 ];
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
@@ -21,7 +20,7 @@ export default function UploadForm({ onUploaded }: { onUploaded?: (job: RecentJo
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
 
-  const [format, setFormat] = useState<DocumentFormat>("markdown");
+  const [format, setFormat] = useState<DocumentFormat>("html");
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<UploadState>("staged");
