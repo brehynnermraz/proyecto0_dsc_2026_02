@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import UploadForm from "@/components/UploadForm";
 import JobTableRow from "@/components/JobTableRow";
-import { getRecentJobs, addRecentJob, removeRecentJob, RecentJob } from "@/lib/job-history";
+import { RecentJob } from "@/lib/job-history";
+import { listJobs } from "@/lib/api";
 
 export default function DashboardPage() {
   const { token, ready } = useAuth();
@@ -17,19 +18,24 @@ export default function DashboardPage() {
     if (ready && !token) router.replace("/login");
   }, [ready, token, router]);
 
+  // La lista viene del servidor (GET /jobs), no de localStorage: así se ve en
+  // cualquier navegador o en incógnito con el mismo usuario.
   useEffect(() => {
-    setRecentJobs(getRecentJobs());
-  }, []);
+    if (!token) return;
+    listJobs(token)
+      .then(setRecentJobs)
+      .catch(() => {});
+  }, [token]);
 
   if (!ready || !token) return null;
 
+  // Alta optimista: se muestra al instante; en la próxima carga vendrá igual del
+  // servidor (el submit ya creó el trabajo).
   function handleUploaded(job: RecentJob) {
-    addRecentJob(job);
-    setRecentJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)].slice(0, 20));
+    setRecentJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
   }
 
   function handleDeleted(id: string) {
-    removeRecentJob(id);
     setRecentJobs((prev) => prev.filter((j) => j.id !== id));
   }
 

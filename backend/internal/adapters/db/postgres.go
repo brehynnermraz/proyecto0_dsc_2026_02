@@ -124,6 +124,32 @@ func (r *JobRepo) FindByID(ctx context.Context, id string) (*domain.Job, error) 
 	return &j, nil
 }
 
+// ListByOwner lista los trabajos del usuario (recientes primero) con el nombre
+// y tamaño del documento, para la tabla del dashboard.
+func (r *JobRepo) ListByOwner(ctx context.Context, ownerID string) ([]domain.JobSummary, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT j.id, d.filename, d.size_bytes, j.created_at
+		 FROM jobs j
+		 JOIN documents d ON d.id = j.document_id
+		 WHERE j.owner_id = $1
+		 ORDER BY j.created_at DESC
+		 LIMIT 100`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.JobSummary
+	for rows.Next() {
+		var s domain.JobSummary
+		if err := rows.Scan(&s.ID, &s.Filename, &s.SizeBytes, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // ---- bundles ----
 
 type BundleRepo struct{ pool *pgxpool.Pool }

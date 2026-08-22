@@ -48,6 +48,16 @@ func (s JobStatus) Terminal() bool {
 	}
 }
 
+// JobSummary es una fila de la lista de trabajos del usuario (GET /jobs): lo
+// mínimo que el dashboard necesita para pintar la tabla. El estado en vivo y el
+// bundle los trae luego cada fila con GET /jobs/:id.
+type JobSummary struct {
+	ID        string
+	Filename  string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 // Job es lo que la API conoce de un trabajo: una fila de `jobs` más, si ya
 // terminó con éxito, el id de su bundle (que NO es columna de `jobs` en el
 // esquema del worker, sino que se resuelve por bundles.job_id).

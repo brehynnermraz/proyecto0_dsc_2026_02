@@ -28,6 +28,12 @@ type JobRepository interface {
 	// FindByID trae el job y, si ya produjo un bundle, su id (resuelto por
 	// bundles.job_id, porque el esquema del worker no guarda jobs.bundle_id).
 	FindByID(ctx context.Context, id string) (*domain.Job, error)
+
+	// ListByOwner devuelve los trabajos del usuario (los más recientes primero),
+	// con el nombre y tamaño del documento para pintar la tabla del dashboard.
+	// Es la fuente de la lista: sustituye al historial en localStorage del
+	// frontend, que era por-navegador (no se veía en incógnito ni en otro equipo).
+	ListByOwner(ctx context.Context, ownerID string) ([]domain.JobSummary, error)
 }
 
 type BundleRepository interface {

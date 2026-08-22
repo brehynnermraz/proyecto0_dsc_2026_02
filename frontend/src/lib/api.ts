@@ -108,6 +108,26 @@ export interface Job {
   CreatedAt: string;
 }
 
+// JobListItem es una fila de GET /jobs: lo que el dashboard necesita para la
+// tabla. El estado en vivo y el bundle los trae luego cada fila con getJob/SSE.
+export interface JobListItem {
+  id: string;
+  filename: string;
+  size: number;
+  createdAt: string;
+}
+
+// listJobs es la FUENTE de la lista de trabajos (sustituye al historial en
+// localStorage, que era por-navegador y no se veía en incógnito ni en otro
+// equipo). El backend filtra por el dueño del token.
+export async function listJobs(token: string): Promise<JobListItem[]> {
+  const res = await fetch(`${API_URL}/jobs`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) await parseError(res);
+  return res.json();
+}
+
 export async function getJob(token: string, jobId: string): Promise<Job> {
   const res = await fetch(`${API_URL}/jobs/${jobId}`, {
     headers: { Authorization: `Bearer ${token}` },

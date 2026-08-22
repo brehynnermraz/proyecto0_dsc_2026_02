@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,6 +13,15 @@ import (
 	"okfbundler/internal/domain"
 	"okfbundler/internal/ports"
 )
+
+// jobListItem es una fila de GET /jobs. Sus claves json coinciden con lo que el
+// frontend espera para la tabla (id, filename, size, createdAt).
+type jobListItem struct {
+	ID        string    `json:"id"`
+	Filename  string    `json:"filename"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"createdAt"`
+}
 
 type JobsHandler struct {
 	Jobs      ports.JobRepository
@@ -40,6 +50,24 @@ func (h *JobsHandler) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// List devuelve los trabajos del usuario autenticado (fuente de la lista del
+// dashboard; sustituye al historial en localStorage, que era por-navegador).
+func (h *JobsHandler) List(c *gin.Context) {
+	userID := c.GetString(middleware.ContextUserIDKey)
+
+	jobs, err := h.Jobs.ListByOwner(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudo listar los trabajos"})
+		return
+	}
+
+	out := make([]jobListItem, 0, len(jobs))
+	for _, j := range jobs {
+		out = append(out, jobListItem{ID: j.ID, Filename: j.Filename, Size: j.SizeBytes, CreatedAt: j.CreatedAt})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 func (h *JobsHandler) Get(c *gin.Context) {

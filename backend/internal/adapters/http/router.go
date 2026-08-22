@@ -41,6 +41,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		docs := handlers.NewDocumentsHandler(deps.Submit)
 		protected.POST("/documents", docs.Upload)
 
+		protected.GET("/jobs", jobs.List)
 		protected.GET("/jobs/:id", jobs.Get)
 		protected.GET("/jobs/:id/events", jobs.Stream)
 		protected.DELETE("/jobs/:id", jobs.Delete)
