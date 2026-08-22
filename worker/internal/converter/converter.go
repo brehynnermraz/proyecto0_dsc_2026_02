@@ -48,7 +48,14 @@ type Result struct {
 // El error que devuelve (MIME no soportado, archivo corrupto) es SIEMPRE permanente:
 // parse/segment/render son deterministas, reintentar daría el mismo resultado.
 func Convert(raw []byte, src Source) (Result, error) {
-	p, err := parser.For(src.MIME)
+	// El MIME lo trae la BD (lo puso la API a partir del "format" del usuario).
+	// Si el usuario se equivocó (subir un .epub como HTML), ese MIME miente y el
+	// original quedaría destrozado por el parser equivocado. Antes de elegir
+	// parser, se olfatean los magic bytes: un EPUB se reconoce por su firma y se
+	// procesa como EPUB pase lo que pase el MIME declarado.
+	mime := detectMIME(raw, src.MIME)
+
+	p, err := parser.For(mime)
 	if err != nil {
 		return Result{}, err // parser.ErrUnsupportedMIME
 	}
@@ -71,13 +78,52 @@ func Convert(raw []byte, src Source) (Result, error) {
 	files["index.md"] = RenderIndex(title, units, src)
 
 	ops := []string{
-		fmt.Sprintf("parseo del original (%s)", src.MIME),
+		fmt.Sprintf("parseo del original (%s)", mime),
 		fmt.Sprintf("segmentación en %d unidad(es)", len(units)),
 		"render de conceptos e índice (Markdown)",
+	}
+	if mime != src.MIME {
+		// Trazabilidad: el log deja constancia de que el MIME declarado no casaba
+		// con el contenido y se corrigió.
+		ops = append([]string{
+			fmt.Sprintf("MIME corregido por contenido: %s → %s", src.MIME, mime),
+		}, ops...)
 	}
 
 	v := Validate(units, files)
 	files["log.md"] = RenderLog(src, title, units, v, ops)
 
 	return Result{Files: files, Validation: v, Units: len(units)}, nil
+}
+
+// detectMIME corrige el MIME declarado cuando el contenido lo desmiente. Hoy
+// solo detecta EPUB (el caso real que rompió: un .epub subido como text/html);
+// para el resto confía en lo declarado.
+func detectMIME(raw []byte, declared string) string {
+	if isEPUB(raw) {
+		return "application/epub+zip"
+	}
+	return declared
+}
+
+// isEPUB reconoce un EPUB por su firma canónica: un ZIP (magic "PK\x03\x04")
+// cuyo PRIMER archivo es "mimetype" con contenido "application/epub+zip",
+// almacenado sin comprimir en un offset fijo (así lo exige el OCF del EPUB).
+// Es una comprobación barata que no descomprime nada.
+func isEPUB(raw []byte) bool {
+	const (
+		mimeType = "application/epub+zip"
+		nameOff  = 30 // tras la cabecera local del ZIP viene el nombre del archivo
+		nameLen  = len("mimetype")
+	)
+	if len(raw) < nameOff+nameLen+len(mimeType) {
+		return false
+	}
+	if raw[0] != 'P' || raw[1] != 'K' || raw[2] != 0x03 || raw[3] != 0x04 {
+		return false
+	}
+	if string(raw[nameOff:nameOff+nameLen]) != "mimetype" {
+		return false
+	}
+	return string(raw[nameOff+nameLen:nameOff+nameLen+len(mimeType)]) == mimeType
 }

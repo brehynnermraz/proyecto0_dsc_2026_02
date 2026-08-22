@@ -55,15 +55,11 @@ func (b *htmlBuilder) walk(n *html.Node) {
 		case atom.Title:
 			b.docTitle = strings.TrimSpace(textOf(n))
 			return
-		case atom.H1, atom.H2:
+		case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
 			b.flush()
-			level := 1
-			if n.DataAtom == atom.H2 {
-				level = 2
-			}
 			b.cur = &domain.Unit{
 				Title: strings.TrimSpace(textOf(n)),
-				Level: level,
+				Level: headingLevel(n.DataAtom),
 			}
 			return
 		case atom.P:
@@ -103,6 +99,28 @@ func (b *htmlBuilder) flush() {
 	b.units = append(b.units, *b.cur)
 	b.cur = nil
 	b.buf.Reset()
+}
+
+// headingLevel traduce el átomo de un encabezado (<h1>..<h6>) a su nivel 1..6.
+// Antes solo se reconocían h1 y h2: los h3+ (p. ej. los capítulos de un libro,
+// que Gutenberg marca con <h3>) se perdían por completo, ni su texto se
+// capturaba. Reconocerlos es lo que permite que el segmentador corte por
+// capítulo.
+func headingLevel(a atom.Atom) int {
+	switch a {
+	case atom.H1:
+		return 1
+	case atom.H2:
+		return 2
+	case atom.H3:
+		return 3
+	case atom.H4:
+		return 4
+	case atom.H5:
+		return 5
+	default: // atom.H6
+		return 6
+	}
 }
 
 func textOf(n *html.Node) string {

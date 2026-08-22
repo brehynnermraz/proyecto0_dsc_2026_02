@@ -7,24 +7,49 @@ import (
 	"github.com/uniandes-isis4426/okf/worker/internal/domain"
 )
 
-// Segment parte el documento en unidades lógicas (§6.3), en este orden:
+// Segment parte el documento en unidades lógicas ("un concepto por capítulo"),
+// en este orden:
 //
-//  1. Cortar por encabezados de nivel 1. Si no hay ninguno (con título), cortar por
-//     nivel 2.
-//  2. Los encabezados de nivel inferior al de corte se pliegan como subsección (##)
-//     dentro de la unidad en curso.
+//  1. Elegir el NIVEL DE CORTE: el nivel de encabezado más profundo que se
+//     REPITE (≥2 encabezados con título en ese nivel). Ese es el nivel que de
+//     verdad divide el documento en secciones hermanas —los capítulos—, no un
+//     título aislado ni un subtítulo suelto. Si ningún nivel se repite, se usa
+//     el nivel con título más profundo que exista.
+//  2. Los encabezados de OTRO nivel (un título de libro por encima, o una
+//     subsección por debajo) se pliegan como subsección (##) dentro de la
+//     unidad en curso.
 //  3. El contenido anterior al primer encabezado de corte forma una unidad inicial.
-//  4. Si no hay encabezados de ningún nivel, se produce UNA SOLA unidad. Esto NO emite
+//  4. Si no hay encabezados con título, se produce UNA SOLA unidad. Esto NO emite
 //     advertencia: es una condición explícita del §6 y el error más fácil de cometer.
 //  5. Se preserva el orden del documento de origen.
+//
+// (Antes la regla era "cortar en el nivel más superficial": con un libro cuyo
+// h1 es solo el título, plegaba TODO en una única unidad gigante. Se cambió a
+// propósito a "el nivel que divide" para obtener un concepto por capítulo.)
 func Segment(d domain.Document) []domain.Unit {
-	// Nivel de corte: 1 si hay algún encabezado de nivel 1 con título; si no, 2.
-	cut := 2
+	// Nivel de corte: el más profundo con ≥2 encabezados con título; si ninguno
+	// repite, el más profundo con título; si no hay títulos, 1 (una sola unidad).
+	counts := map[int]int{}
+	deepestTitled := 0
 	for _, u := range d.Units {
-		if u.Level == 1 && strings.TrimSpace(u.Title) != "" {
-			cut = 1
-			break
+		if strings.TrimSpace(u.Title) != "" {
+			counts[u.Level]++
+			if u.Level > deepestTitled {
+				deepestTitled = u.Level
+			}
 		}
+	}
+	cut := 0
+	for lvl, c := range counts {
+		if c >= 2 && lvl > cut {
+			cut = lvl
+		}
+	}
+	if cut == 0 {
+		cut = deepestTitled
+	}
+	if cut == 0 {
+		cut = 1
 	}
 
 	var out []domain.Unit
