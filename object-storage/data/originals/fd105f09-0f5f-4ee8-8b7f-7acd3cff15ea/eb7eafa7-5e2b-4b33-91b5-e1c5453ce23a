@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="es">
+  <body>
+    <p>Este documento no tiene &lt;title&gt; ni un primer encabezado: sirve para ver
+       cómo el parser crea una unidad inicial y usa el nombre del archivo como título.</p>
+    <h2>Mensajería asíncrona</h2>
+    <p>Desacopla al productor del consumidor: el productor publica y sigue; el
+       consumidor procesa cuando puede.</p>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <title>Contenedores y orquestación</title>
+  </head>
+  <body>
+    <h1>Contenedores</h1>
+    <p>Un contenedor empaqueta una aplicación con sus dependencias para que corra
+       igual en cualquier entorno.</p>
+    <pre>docker build -t app .
+docker run app</pre>
+
+    <h1>Orquestación</h1>
+    <p>Cuando hay muchos contenedores hace falta programarlos, escalarlos y
+       recuperarlos ante fallos.</p>
+    <h2>Escalado horizontal</h2>
+    <p>Añadir más réplicas reparte la carga; con una cola de trabajo, cada réplica
+       toma tareas a su ritmo.</p>
+  </body>
+</html>

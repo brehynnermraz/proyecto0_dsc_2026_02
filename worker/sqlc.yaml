@@ -1,0 +1,17 @@
+# sqlc genera tipos y consultas tipadas de Go a partir del esquema compartido en
+# ../migrations. Se usa en el PASO 2 (instalar con:
+#   go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest  y luego `sqlc generate`).
+#
+# Placeholder: apunta a ../migrations, que todavía no existe. Descomentar y ajustar
+# cuando se congele el esquema en el paso 2.
+#
+# version: "2"
+# sql:
+#   - engine: postgresql
+#     schema: "../migrations"
+#     queries: "internal/adapter/db/queries"
+#     gen:
+#       go:
+#         package: "db"
+#         out: "internal/adapter/db"
+#         sql_package: "pgx/v5"
