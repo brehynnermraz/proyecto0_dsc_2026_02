@@ -116,6 +116,19 @@ func (p *Processor) Process(ctx context.Context, jobID uuid.UUID) error {
 		return fmt.Errorf("%w: %s: %v", ErrTransient, what, err)
 	}
 
+	// 3.5 Retardo artificial opcional (solo demo, §10.2). El trabajo queda en
+	//     'processing' mientras el latido renueva el lease: así se ve la respuesta
+	//     inmediata de la API, se puede cerrar la conexión SSE y comprobar que el
+	//     trabajo continúa. Respeta el workCtx (JobTimeout, cancelación por latido).
+	if d := p.cfg.ProcessingDelay; d > 0 {
+		log.Info("retardo artificial de procesamiento (demo)", "delay", d.String())
+		select {
+		case <-time.After(d):
+		case <-workCtx.Done():
+			return classify("retardo de demostración", workCtx.Err())
+		}
+	}
+
 	// 4. Leer el original del store, acotado (entrada no confiable). Inexistente →
 	//    permanente; otro fallo → transitorio o cancelado.
 	raw, err := p.readOriginal(workCtx, cj.Document.StorageKey)

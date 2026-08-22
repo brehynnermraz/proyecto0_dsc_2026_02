@@ -56,6 +56,15 @@ type Config struct {
 	LeaseTTL          time.Duration `env:"JOB_LEASE_TTL"          envDefault:"30s"`
 	JobTimeout        time.Duration `env:"JOB_TIMEOUT"            envDefault:"5m"`
 
+	// ProcessingDelay añade una pausa artificial DENTRO del procesamiento real
+	// (no simula nada: la conversión igual corre después). Sirve para la
+	// sustentación (§10.2, "evidencia de asincronía"): hacer VISIBLE el estado
+	// 'processing' el tiempo suficiente para mostrar la respuesta inmediata de la
+	// API, cerrar la conexión y ver que el trabajo continúa. La pausa respeta el
+	// lease (el latido sigue renovando) y el JobTimeout. 0 = desactivado (lo
+	// normal fuera de la demo).
+	ProcessingDelay time.Duration `env:"PROCESSING_DELAY" envDefault:"0s"`
+
 	// MaxInputSize acota la lectura del original (entrada no confiable).
 	MaxInputSize int64 `env:"MAX_INPUT_BYTES" envDefault:"52428800"` // 50 MiB
 
@@ -90,7 +99,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// Validate comprueba las relaciones entre valores. 
+// Validate comprueba las relaciones entre valores.
 func (c Config) Validate() error {
 	if c.Prefetch < 1 {
 		return fmt.Errorf("AMQP_PREFETCH debe ser >= 1, es %d", c.Prefetch)
