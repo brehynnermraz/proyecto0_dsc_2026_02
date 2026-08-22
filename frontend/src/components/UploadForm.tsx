@@ -11,6 +11,16 @@ const FORMATS: { value: DocumentFormat; label: string; extensions: string }[] = 
   { value: "epub", label: "EPUB", extensions: ".epub" },
 ];
 
+// Deduce el formato por la extensión del archivo. Evita el error de subir un
+// .epub con el formato "HTML" seleccionado (que el worker procesaría como HTML
+// y saldría un bundle vacío). Devuelve null si la extensión no se reconoce.
+function formatForFilename(name: string): DocumentFormat | null {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".epub")) return "epub";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  return null;
+}
+
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
 type UploadState = "staged" | "uploading" | "done" | "error";
@@ -42,6 +52,12 @@ export default function UploadForm({ onUploaded }: { onUploaded?: (job: RecentJo
   function stageFile(selected: File) {
     setFile(selected);
     setProgress(0);
+
+    // Ajusta el formato a la extensión del archivo elegido: así el usuario no
+    // tiene que acordarse de cambiar el selector antes de arrastrar un .epub.
+    const detected = formatForFilename(selected.name);
+    if (detected) setFormat(detected);
+
     if (selected.size > MAX_SIZE_BYTES) {
       setState("error");
       setError(`El archivo supera el máximo de ${formatBytes(MAX_SIZE_BYTES)}`);
