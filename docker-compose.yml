@@ -101,6 +101,20 @@ services:
       object-storage:
         condition: service_healthy
 
+  # Frontend Next.js (salida standalone). El navegador corre en el HOST, así que
+  # llama a la API por el puerto publicado (localhost:8080), no por "api:8080".
+  # Por eso NEXT_PUBLIC_API_URL apunta a localhost y se pasa como build-arg
+  # (NEXT_PUBLIC_* se incrusta en tiempo de build, no de runtime).
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
 volumes:
   pgdata:
   objectdata:
